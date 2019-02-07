@@ -1,0 +1,10 @@
+F:\Daivshala\TCPModbusClientExample\TCPModbusClientExample\bin\Debug\TCPModbusClientExample.exe
+F:\Daivshala\TCPModbusClientExample\TCPModbusClientExample\bin\Debug\TCPModbusClientExample.pdb
+F:\Daivshala\TCPModbusClientExample\TCPModbusClientExample\bin\Debug\ModbusTCP.dll
+F:\Daivshala\TCPModbusClientExample\TCPModbusClientExample\bin\Debug\ModbusTCP.pdb
+F:\Daivshala\TCPModbusClientExample\TCPModbusClientExample\obj\x86\Debug\TCPModbusClientExample.csprojResolveAssemblyReference.cache
+F:\Daivshala\TCPModbusClientExample\TCPModbusClientExample\obj\x86\Debug\TCPModbusClientExample.Form1.resources
+F:\Daivshala\TCPModbusClientExample\TCPModbusClientExample\obj\x86\Debug\TCPModbusClientExample.Properties.Resources.resources
+F:\Daivshala\TCPModbusClientExample\TCPModbusClientExample\obj\x86\Debug\TCPModbusClientExample.csproj.GenerateResource.Cache
+F:\Daivshala\TCPModbusClientExample\TCPModbusClientExample\obj\x86\Debug\TCPModbusClientExample.exe
+F:\Daivshala\TCPModbusClientExample\TCPModbusClientExample\obj\x86\Debug\TCPModbusClientExample.pdb
