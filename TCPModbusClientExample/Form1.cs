@@ -1,389 +1,515 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
-using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Windows.Forms;
-using ModbusTCP;
-using System.Net.Sockets;
-using System.Net;
-using System.IO;
-using System.Collections;
 
 namespace TCPModbusClientExample
 {
+    /// <summary>
+    /// Description of MainForm.
+    /// </summary>
     public partial class Form1 : Form
     {
-        ModbusTCP.Master MBmaster;
-        byte[] data;
-        TextBox txtData;
-        Label labData;
-        Int32 port;
+        private EasyModbus.ModbusClient modbusClient;
         public Form1()
         {
+          
             InitializeComponent();
-        }
 
-        private void Form1_Load(object sender, EventArgs e)
-        {
-            radioButton1.Checked = true;
-            data = new byte[0];
-            ResizeData();
-        }
-        private void MBmaster_OnException(ushort id, byte unit, byte function, byte exception)
-        {
-            string exc = "Modbus says error: ";
-            switch (exception)
-            {
-                case Master.excIllegalFunction: exc += "Illegal function!"; break;
-                case Master.excIllegalDataAdr: exc += "Illegal data adress!"; break;
-                case Master.excIllegalDataVal: exc += "Illegal data value!"; break;
-                case Master.excSlaveDeviceFailure: exc += "Slave device failure!"; break;
-                case Master.excAck: exc += "Acknoledge!"; break;
-                case Master.excGatePathUnavailable: exc += "Gateway path unavailbale!"; break;
-                case Master.excExceptionTimeout: exc += "Slave timed out!"; break;
-                case Master.excExceptionConnectionLost: exc += "Connection is lost!"; break;
-                case Master.excExceptionNotConnected: exc += "Not connected!"; break;
-            }
-
-            MessageBox.Show(exc, "Modbus slave exception");
-        }
-        private void MBmaster_OnResponseData(ushort ID, byte unit, byte function, byte[] values)
-        {
+            modbusClient = new EasyModbus.ModbusClient();
+            modbusClient.ReceiveDataChanged += new EasyModbus.ModbusClient.ReceiveDataChangedHandler(UpdateReceiveData);
+            modbusClient.SendDataChanged += new EasyModbus.ModbusClient.SendDataChangedHandler(UpdateSendData);
+            modbusClient.ConnectedChanged += new EasyModbus.ModbusClient.ConnectedChangedHandler(UpdateConnectedChanged);
            
-            if (this.InvokeRequired)
-            {
-                this.BeginInvoke(new Master.ResponseData(MBmaster_OnResponseData), new object[] { ID, unit, function, values });
-                return;
-            }
 
-         
-            switch (ID)
-            {
-                case 1:
-                    groupBox2.Text = "Read coils";
-                    data = values;
-                    ShowAs(null, null);
-                    break;
-                case 2:
-                    groupBox2.Text = "Read discrete inputs";
-                    data = values;
-                    ShowAs(null, null);
-                    break;
-                case 3:
-                    groupBox2.Text = "Read holding register";
-                    data = values;
-                    ShowAs(null, null);
-                    break;
-                case 4:
-                    groupBox2.Text = "Read input register";
-                    data = values;
-                    ShowAs(null, null);
-                    break;
-                case 5:
-                    groupBox2.Text = "Write single coil";
-                    break;
-                case 6:
-                    groupBox2.Text = "Write multiple coils";
-                    break;
-                case 7:
-                    groupBox2.Text = "Write single register";
-                    break;
-                case 8:
-                    groupBox2.Text = "Write multiple register";
-                    break;
-            }
         }
-        private ushort ReadStartAdr()
+
+        string receiveData = null;
+
+        void UpdateReceiveData(object sender)
         {
-         
-            if (txtStartAdress.Text.IndexOf("0x", 0, txtStartAdress.Text.Length) == 0)
+            receiveData = "Rx: " + BitConverter.ToString(modbusClient.receiveData).Replace("-", " ") + System.Environment.NewLine;
+            Thread thread = new Thread(updateReceiveTextBox);
+            thread.Start();
+        }
+        delegate void UpdateReceiveDataCallback();
+        void updateReceiveTextBox()
+        {
+            if (textBox1.InvokeRequired)
             {
-                string str = txtStartAdress.Text.Replace("0x", "");
-                ushort hex = Convert.ToUInt16(str, 16);
-                return hex;
+                UpdateReceiveDataCallback d = new UpdateReceiveDataCallback(updateReceiveTextBox);
+                this.Invoke(d, new object[] { });
             }
             else
             {
-                return Convert.ToUInt16(txtStartAdress.Text);
+                textBox1.AppendText(receiveData);
             }
         }
-        private byte[] GetData(int num)
+
+        string sendData = null;
+        void UpdateSendData(object sender)
         {
-            bool[] bits = new bool[num];
-            byte[] data = new Byte[num];
-            int[] word = new int[num];
+            sendData = "Tx: " + BitConverter.ToString(modbusClient.sendData).Replace("-", " ") + System.Environment.NewLine;
+            Thread thread = new Thread(updateSendTextBox);
+            thread.Start();
+
+        }
+
+        void updateSendTextBox()
+        {
+            if (textBox1.InvokeRequired)
+            {
+                UpdateReceiveDataCallback d = new UpdateReceiveDataCallback(updateSendTextBox);
+                this.Invoke(d, new object[] { });
+            }
+            else
+            {
+                textBox1.AppendText(sendData);
+            }
+        }
+
+        void BtnConnectClick(object sender, EventArgs e)
+        {
+            modbusClient.IPAddress = txtIpAddressInput.Text;
+            modbusClient.Port = int.Parse(txtPortInput.Text);
+            modbusClient.Connect();
+        }
+      
 
        
-            foreach (Control ctrl in groupBox2.Controls)
-            {
-                if (ctrl is TextBox)
-                {
-                    int x = Convert.ToInt16(ctrl.Tag);
-                    if (radioButton1.Checked)
-                    {
-                        if ((x <= bits.GetUpperBound(0)) && (ctrl.Text != "")) bits[x] = Convert.ToBoolean(Convert.ToByte(ctrl.Text));
-                        else break;
-                    }
-                    if (radioButton2.Checked)
-                    {
-                        if ((x <= data.GetUpperBound(0)) && (ctrl.Text != "")) data[x] = Convert.ToByte(ctrl.Text);
-                        else break;
-                    }
-                    if (radioButton3.Checked)
-                    {
-                        if ((x <= data.GetUpperBound(0)) && (ctrl.Text != ""))
-                        {
-                            try { word[x] = Convert.ToInt16(ctrl.Text); }
-                            catch (SystemException) { word[x] = Convert.ToUInt16(ctrl.Text); };
-                        }
-                        else break;
-                    }
-                }
-            }
-            if (radioButton1.Checked)
-            {
-                int numBytes = (num / 8 + (num % 8 > 0 ? 1 : 0));
-                data = new Byte[numBytes];
-                BitArray bitArray = new BitArray(bits);
-                bitArray.CopyTo(data, 0);
-            }
-            if (radioButton1.Checked)
-            {
-                data = new Byte[num * 2];
-                for (int x = 0; x < num; x++)
-                {
-                    byte[] dat = BitConverter.GetBytes((short)IPAddress.HostToNetworkOrder((short)word[x]));
-                    data[x * 2] = dat[0];
-                    data[x * 2 + 1] = dat[1];
-                }
-            }
-            return data;
-        }
-        private void ShowAs(object sender, System.EventArgs e)
-        {
-            RadioButton rad;
-            if (sender is RadioButton)
-            {
-                rad = (RadioButton)sender;
-                if (rad.Checked == false) return;
-            }
 
-            bool[] bits = new bool[1];
-            int[] word = new int[1];
+        
 
-            if (radioButton1.Checked == true)
-            {
-                BitArray bitArray = new BitArray(data);
-                bits = new bool[bitArray.Count];
-                bitArray.CopyTo(bits, 0);
-            }
-            if (radioButton2.Checked == true)
-            {
-                if (data.Length < 2) return;
-                int length = data.Length / 2 + Convert.ToInt16(data.Length % 2 > 0);
-                word = new int[length];
-                for (int x = 0; x < length; x = x + 2)
-                {
-                    word[x / 2] = data[x] * 256 + data[x + 1];
-                }
-            }
+        
 
-           
-            foreach (Control ctrl in groupBox2.Controls)
-            {
-                if (ctrl is TextBox)
-                {
-                    int x = Convert.ToInt16(ctrl.Tag);
-                    if (radioButton1.Checked)
-                    {
-                        if (x <= bits.GetUpperBound(0))
-                        {
-                            ctrl.Text = Convert.ToByte(bits[x]).ToString();
-                            ctrl.Visible = true;
-                        }
-                        else ctrl.Text = "";
-                    }
-                    if (radioButton2.Checked)
-                    {
-                        if (x <= data.GetUpperBound(0))
-                        {
-                            ctrl.Text = data[x].ToString();
-                            ctrl.Visible = true;
-                        }
-                        else ctrl.Text = "";
-                    }
-                    if (radioButton3.Checked)
-                    {
-                        if (x <= word.GetUpperBound(0))
-                        {
-                            ctrl.Text = word[x].ToString();
-                            ctrl.Visible = true;
-                        }
-                        else ctrl.Text = "";
-                    }
-                }
-            }
-        }
+        
 
-        private void ResizeData()
-        {
-           
-            groupBox2.Controls.Clear();
-            int x = 0;
-            int y = 10;
-            int z = 20;
-            while (y < groupBox2.Size.Width - 100)
-            {
-                labData = new Label();
-                groupBox2.Controls.Add(labData);
-                labData.Size = new System.Drawing.Size(30, 20);
-                labData.Location = new System.Drawing.Point(y, z);
-                labData.Text = Convert.ToString(x + 1);
-
-                txtData = new TextBox();
-                groupBox2.Controls.Add(txtData);
-                txtData.Size = new System.Drawing.Size(50, 20);
-                txtData.Location = new System.Drawing.Point(y + 30, z);
-                txtData.TextAlign = System.Windows.Forms.HorizontalAlignment.Right;
-                txtData.Tag = x;
-
-                x++;
-                z = z + txtData.Size.Height + 5;
-                if (z > groupBox2.Size.Height - 40)
-                {
-                    y = y + 100;
-                    z = 20;
-                }
-            }
-        }
-        private void frmStart_Resize(object sender, System.EventArgs e)
-        {
-            if (groupBox2.Visible == true) ResizeData();
-        }
-        private void button1_Click(object sender, EventArgs e)
-        {
-           
-
-            try
-            {
+        bool listBoxPrepareCoils = false;
+        
+        bool listBoxPrepareRegisters = false;
    
-              
-                MBmaster = new Master(textBox1.Text, 502, true);
-                MBmaster.OnResponseData += new Master.ResponseData(MBmaster_OnResponseData);
-                MBmaster.OnException += new Master.ExceptionData(MBmaster_OnException);
 
-                
-            }
-            catch (SystemException error)
-            {
-                MessageBox.Show(error.Message);
-            }
-        }
+        
 
-        private void groupBox1_Enter(object sender, EventArgs e)
-        {
 
-        }
+
+       
+
+        
+
+
+       
+
+       
 
         private void button3_Click(object sender, EventArgs e)
         {
-            ushort ID = 1;
-            byte unit = Convert.ToByte(txtUnit.Text);
-            ushort StartAddress = ReadStartAdr();
-            UInt16 Length = Convert.ToUInt16(txtSize.Text);
+            try
+            {
+                if (modbusClient.Connected)
+                    modbusClient.Disconnect();
+                if (cbbSelctionModbus.SelectedIndex == 0)
+                {
 
-            MBmaster.ReadCoils(ID, unit, StartAddress, Length);
+
+                    modbusClient.IPAddress = txtIpAddressInput.Text;
+                    modbusClient.Port = int.Parse(txtPortInput.Text);
+                    modbusClient.SerialPort = null;
+                    //modbusClient.receiveDataChanged += new EasyModbus.ModbusClient.ReceiveDataChanged(UpdateReceiveData);
+                    //modbusClient.sendDataChanged += new EasyModbus.ModbusClient.SendDataChanged(UpdateSendData);
+                    //modbusClient.connectedChanged += new EasyModbus.ModbusClient.ConnectedChanged(UpdateConnectedChanged);
+
+                    modbusClient.Connect();
+                }
+                if (cbbSelctionModbus.SelectedIndex == 1)
+                {
+                    modbusClient.SerialPort = cbbSelectComPort.SelectedItem.ToString();
+
+                    modbusClient.UnitIdentifier = byte.Parse(txtSlaveAddressInput.Text);
+                    modbusClient.Baudrate = int.Parse(txtBaudrate.Text);
+                    if (cbbParity.SelectedIndex == 0)
+                        modbusClient.Parity = System.IO.Ports.Parity.Even;
+                    if (cbbParity.SelectedIndex == 1)
+                        modbusClient.Parity = System.IO.Ports.Parity.Odd;
+                    if (cbbParity.SelectedIndex == 2)
+                        modbusClient.Parity = System.IO.Ports.Parity.None;
+
+                    if (cbbStopbits.SelectedIndex == 0)
+                        modbusClient.StopBits = System.IO.Ports.StopBits.One;
+                    if (cbbStopbits.SelectedIndex == 1)
+                        modbusClient.StopBits = System.IO.Ports.StopBits.OnePointFive;
+                    if (cbbStopbits.SelectedIndex == 2)
+                        modbusClient.StopBits = System.IO.Ports.StopBits.Two;
+
+                    modbusClient.Connect();
+                }
+            }
+            catch (Exception exc)
+            {
+                MessageBox.Show(exc.Message, "Unable to connect to Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void UpdateConnectedChanged(object sender)
+        {
+            if (modbusClient.Connected)
+            {
+                txtConnectedStatus.Text = "Connected to Server";
+                txtConnectedStatus.BackColor = Color.Green;
+            }
+            else
+            {
+                txtConnectedStatus.Text = "Not Connected to Server";
+                txtConnectedStatus.BackColor = Color.Red;
+            }
         }
 
         private void button4_Click(object sender, EventArgs e)
         {
-            ushort ID = 2;
-            byte unit = Convert.ToByte(txtUnit.Text);
-            ushort StartAddress = ReadStartAdr();
-            UInt16 Length = Convert.ToUInt16(txtSize.Text);
-
-            MBmaster.ReadDiscreteInputs(ID, unit, StartAddress, Length);	
+            modbusClient.Disconnect();
         }
 
-        private void button5_Click(object sender, EventArgs e)
+        private void txtBaudrate_TextChanged(object sender, EventArgs e)
         {
-            ushort ID = 3;
-            byte unit = Convert.ToByte(txtUnit.Text);
-            ushort StartAddress = ReadStartAdr();
-            UInt16 Length = Convert.ToUInt16(txtSize.Text);
+            if (modbusClient.Connected)
+                modbusClient.Disconnect();
+            modbusClient.Baudrate = int.Parse(txtBaudrate.Text);
 
-            MBmaster.ReadHoldingRegister(ID, unit, StartAddress, Length);	
+
         }
 
-        private void button6_Click(object sender, EventArgs e)
+        private void cbbSelctionModbus_SelectedIndexChanged_1(object sender, EventArgs e)
         {
-            ushort ID = 4;
-            byte unit = Convert.ToByte(txtUnit.Text);
-            ushort StartAddress = ReadStartAdr();
-            UInt16 Length = Convert.ToUInt16(txtSize.Text);
 
-            MBmaster.ReadInputRegister(ID, unit, StartAddress, Length);	
+            if (modbusClient.Connected)
+                modbusClient.Disconnect();
+
+            if (cbbSelctionModbus.SelectedIndex == 0)
+            {
+
+                txtIpAddress.Visible = true;
+                txtIpAddressInput.Visible = true;
+                txtPort.Visible = true;
+                txtPortInput.Visible = true;
+                txtCOMPort.Visible = false;
+                cbbSelectComPort.Visible = false;
+                txtSlaveAddress.Visible = false;
+                txtSlaveAddressInput.Visible = false;
+                lblBaudrate.Visible = false;
+                lblParity.Visible = false;
+                lblStopbits.Visible = false;
+                txtBaudrate.Visible = false;
+                cbbParity.Visible = false;
+                cbbStopbits.Visible = false;
+            }
+            if (cbbSelctionModbus.SelectedIndex == 1)
+            {
+                cbbSelectComPort.SelectedIndex = 0;
+                cbbParity.SelectedIndex = 0;
+                cbbStopbits.SelectedIndex = 0;
+                if (cbbSelectComPort.SelectedText == "")
+                    cbbSelectComPort.SelectedItem.ToString();
+                txtIpAddress.Visible = false;
+                txtIpAddressInput.Visible = false;
+                txtPort.Visible = false;
+                txtPortInput.Visible = false;
+                txtCOMPort.Visible = true;
+                cbbSelectComPort.Visible = true;
+                txtSlaveAddress.Visible = true;
+                txtSlaveAddressInput.Visible = true;
+                lblBaudrate.Visible = true;
+                lblParity.Visible = true;
+                lblStopbits.Visible = true;
+                txtBaudrate.Visible = true;
+                cbbParity.Visible = true;
+                cbbStopbits.Visible = true;
+
+
+            }
         }
 
-        private void button7_Click(object sender, EventArgs e)
+        private void cbbSelectComPort_SelectedIndexChanged_1(object sender, EventArgs e)
         {
-            ushort ID = 5;
-            byte unit = Convert.ToByte(txtUnit.Text);
-            ushort StartAddress = ReadStartAdr();
+            if (modbusClient.Connected)
+                modbusClient.Disconnect();
+            modbusClient.SerialPort = cbbSelectComPort.SelectedItem.ToString();
 
-            data = GetData(1);
-            txtSize.Text = "1";
+            modbusClient.UnitIdentifier = byte.Parse(txtSlaveAddressInput.Text);
 
-            MBmaster.WriteSingleCoils(ID, unit, StartAddress, Convert.ToBoolean(data[0]));
         }
 
-        private void button9_Click(object sender, EventArgs e)
+        private void btnReadCoils_Click(object sender, EventArgs e)
         {
-            ushort ID			= 15;
-            byte unit           = Convert.ToByte(txtUnit.Text);
-            ushort StartAddress = ReadStartAdr();
-            UInt16 Length = Convert.ToUInt16(txtSize.Text);
-
-            data = GetData(Convert.ToUInt16(txtSize.Text));
-            MBmaster.WriteMultipleCoils(ID, unit, StartAddress, Length, data);
+            try
+            {
+                if (!modbusClient.Connected)
+                {
+                    button3_Click(null, null);
+                }
+                bool[] serverResponse = modbusClient.ReadCoils(int.Parse(txtStartingAddressInput.Text) -1, int.Parse(txtNumberOfValuesInput.Text));
+                lsbAnswerFromServer.Items.Clear();
+                for (int i = 0; i < serverResponse.Length; i++)
+                {
+                    lsbAnswerFromServer.Items.Add(serverResponse[i]);
+                }
+            }
+            catch (Exception exc)
+            {
+                MessageBox.Show(exc.Message, "Exception Reading values from Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
-        private void button8_Click(object sender, EventArgs e)
+        private void btnReadDiscreteInputs_Click_1(object sender, EventArgs e)
         {
-            ushort ID = 6;
-            byte unit = Convert.ToByte(txtUnit.Text);
-            ushort StartAddress = ReadStartAdr();
 
-            if (radioButton1.Checked) data = GetData(16);
-            else if (radioButton2.Checked) data = GetData(2);
-            else data = GetData(1);
-            txtSize.Text = "1";
-            txtData.Text = data[0].ToString();
-
-            MBmaster.WriteSingleRegister(ID, unit, StartAddress, data);
+            try
+            {
+                if (!modbusClient.Connected)
+                {
+                    button3_Click(null, null);
+                }
+                bool[] serverResponse = modbusClient.ReadDiscreteInputs(int.Parse(txtStartingAddressInput.Text) -1, int.Parse(txtNumberOfValuesInput.Text));
+                lsbAnswerFromServer.Items.Clear();
+                for (int i = 0; i < serverResponse.Length; i++)
+                {
+                    lsbAnswerFromServer.Items.Add(serverResponse[i]);
+                }
+            }
+            catch (Exception exc)
+            {
+                MessageBox.Show(exc.Message, "Exception Reading values from Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
-        private void button10_Click(object sender, EventArgs e)
+        private void btnReadHoldingRegisters_Click_1(object sender, EventArgs e)
         {
-            ushort ID = 16;
-            byte unit = Convert.ToByte(txtUnit.Text);
-            ushort StartAddress = ReadStartAdr();
+            try
+            {
+                if (!modbusClient.Connected)
+                {
+                    button3_Click(null, null);
+                }
 
-            data = GetData(Convert.ToByte(txtSize.Text));
-            MBmaster.WriteMultipleRegister(ID, unit, StartAddress, data);	
+
+                int[] serverResponse = modbusClient.ReadHoldingRegisters(int.Parse(txtStartingAddressInput.Text)-1 , int.Parse(txtNumberOfValuesInput.Text));
+
+                lsbAnswerFromServer.Items.Clear();
+                for (int i = 0; i < serverResponse.Length; i++)
+                {
+                    lsbAnswerFromServer.Items.Add(serverResponse[i]);
+
+                }
+            }
+            catch (Exception exc)
+            {
+                MessageBox.Show(exc.Message, "Exception Reading values from Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
-        private void groupBox2_Enter(object sender, EventArgs e)
+        private void btnWriteSingleCoil_Click_1(object sender, EventArgs e)
+        {
+            try
+            {
+                if (!modbusClient.Connected)
+                {
+                    button3_Click(null, null);
+                }
+
+                bool coilsToSend = false;
+
+                coilsToSend = bool.Parse(lsbWriteToServer.Items[0].ToString());
+
+
+                modbusClient.WriteSingleCoil(int.Parse(txtStartingAddressOutput.Text) - 1, coilsToSend);
+            }
+            catch (Exception exc)
+            {
+                MessageBox.Show(exc.Message, "Exception writing values to Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnWriteMultipleCoils_Click_1(object sender, EventArgs e)
+        {
+            try
+            {
+                if (!modbusClient.Connected)
+                {
+                    button3_Click(null, null);
+                }
+
+                bool[] coilsToSend = new bool[lsbWriteToServer.Items.Count];
+
+                for (int i = 0; i < lsbWriteToServer.Items.Count; i++)
+                {
+
+                    coilsToSend[i] = bool.Parse(lsbWriteToServer.Items[i].ToString());
+                }
+
+
+                modbusClient.WriteMultipleCoils(int.Parse(txtStartingAddressOutput.Text) - 1, coilsToSend);
+            }
+            catch (Exception exc)
+            {
+                MessageBox.Show(exc.Message, "Exception writing values to Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnWriteMultipleRegisters_Click_1(object sender, EventArgs e)
+        {
+            try
+            {
+                if (!modbusClient.Connected)
+                {
+                    button3_Click(null, null);
+                }
+
+                int[] registersToSend = new int[lsbWriteToServer.Items.Count];
+
+                for (int i = 0; i < lsbWriteToServer.Items.Count; i++)
+                {
+
+                    registersToSend[i] = int.Parse(lsbWriteToServer.Items[i].ToString());
+                }
+
+
+                modbusClient.WriteMultipleRegisters(int.Parse(txtStartingAddressOutput.Text) - 1, registersToSend);
+            }
+            catch (Exception exc)
+            {
+                MessageBox.Show(exc.Message, "Exception writing values to Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void button2_Click_1(object sender, EventArgs e)
+        {
+            lsbWriteToServer.Text = lsbWriteToServer.Text.Remove(lsbWriteToServer.Text.LastIndexOf(Environment.NewLine));
+        }
+
+        private void btnClear_Click_1(object sender, EventArgs e)
+        {
+            lsbWriteToServer.Items.Clear();
+        }
+
+        private void btnPrepareCoils_Click_1(object sender, EventArgs e)
+        {
+
+            if (!listBoxPrepareCoils)
+            {
+                lsbAnswerFromServer.Items.Clear();
+            }
+            listBoxPrepareCoils = true;
+            listBoxPrepareRegisters = false;
+            lsbWriteToServer.Items.Add(txtCoilValue.Text);
+        }
+
+        
+
+        private void button1_Click_1(object sender, EventArgs e)
+        {
+            if (!listBoxPrepareRegisters)
+            {
+                lsbAnswerFromServer.Items.Clear();
+            }
+            listBoxPrepareRegisters = true;
+            listBoxPrepareCoils = false;
+            lsbWriteToServer.Items.Add(int.Parse(txtRegisterValue.Text));
+        }
+
+        private void btnReadInputRegisters_Click_1(object sender, EventArgs e)
+        {
+
+            try
+            {
+                if (!modbusClient.Connected)
+                {
+                    button3_Click(null, null);
+                }
+
+                  int[] serverResponse = modbusClient.ReadInputRegisters(int.Parse(txtStartingAddressInput.Text)-1 , int.Parse(txtNumberOfValuesInput.Text));
+
+                lsbAnswerFromServer.Items.Clear();
+                for (int i = 0; i <serverResponse.Length; i++)
+                {
+                    lsbAnswerFromServer.Items.Add(serverResponse[i]);
+                }
+            }
+            catch (Exception exc)
+            {
+                MessageBox.Show(exc.Message, "Exception Reading values from Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void btnWriteSingleRegister_Click_1(object sender, EventArgs e)
+        {
+            try
+            {
+                if (!modbusClient.Connected)
+                {
+                    button3_Click(null, null);
+                }
+
+                int registerToSend = 0;
+
+                registerToSend = int.Parse(lsbWriteToServer.Items[0].ToString());
+
+
+                modbusClient.WriteSingleRegister(int.Parse(txtStartingAddressOutput.Text) - 1, registerToSend);
+            }
+            catch (Exception exc)
+            {
+                MessageBox.Show(exc.Message, "Exception writing values to Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void lsbAnswerFromServer_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            int rowindex = lsbAnswerFromServer.SelectedIndex;
+        }
+
+        private void lsbWriteToServer_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            int rowindex = lsbAnswerFromServer.SelectedIndex;
+        }
+
+        private void txtSlaveAddressInput_TextChanged(object sender, EventArgs e)
+        {
+
+            try
+            {
+                modbusClient.UnitIdentifier = byte.Parse(txtSlaveAddressInput.Text);
+            }
+            catch (FormatException)
+            { }
+        }
+
+        private void txtRegisterValue_TextChanged_1(object sender, EventArgs e)
         {
 
         }
 
         private void button2_Click(object sender, EventArgs e)
         {
+            int rowindex = lsbWriteToServer.SelectedIndex;
+            if (rowindex >= 0)
+                lsbWriteToServer.Items.RemoveAt(rowindex);
+        }
+
+        private void txtCoilValue_Enter(object sender, EventArgs e)
+        {
 
         }
+
+        private void btnClear_Click(object sender, EventArgs e)
+        {
+            lsbWriteToServer.Items.Clear();
+        }
+
+       
+       
+
+
+       
+        
     }
 }
